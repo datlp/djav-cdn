@@ -1,3 +1,25 @@
+
+# Remote Storage Fallback over Tailscale
+FPTBOX_VAULT_URL = os.environ.get("FPTBOX_VAULT_URL", "http://fptbox.time-istrian.ts.net:8081/webdav/Vault")
+WEBDAV_USER = os.environ.get("WEBDAV_USER", "admin")
+WEBDAV_PASS = os.environ.get("WEBDAV_PASS", "123456")
+WEBDAV_AUTH = (WEBDAV_USER, WEBDAV_PASS) if WEBDAV_USER else None
+
+def fetch_vault_bin_range(bin_filename: str, offset: int, length: int):
+    """Fetch binary slice from Vault via Tailscale WebDAV Range request from FPT Box."""
+    if offset is None or length is None or length <= 0:
+        return None
+    url = f"{FPTBOX_VAULT_URL.rstrip('/')}/{bin_filename}"
+    headers = {"Range": f"bytes={offset}-{offset + length - 1}"}
+    try:
+        import requests
+        r = requests.get(url, headers=headers, auth=WEBDAV_AUTH, timeout=(2.0, 5.0))
+        if r.status_code in (200, 206) and r.content:
+            return r.content[:length]
+    except Exception:
+        pass
+    return None
+
 import argparse
 import os
 import sys
@@ -1325,8 +1347,16 @@ def get_media():
                 db_dir = os.path.dirname(os.path.abspath(app_args.sqlite3)) if app_args and app_args.sqlite3 else '.'
                 source_name = getattr(scraper_instance, 'source_name', app_args.source if app_args else 'missav').lower()
                 
-                vault_dir = os.environ.get("VAULT_ROOT") or os.environ.get("WINDOWS_BIN_DIR") if os.name == 'nt' else os.environ.get("TERMUX_BIN_DIR")
-                if vault_dir is None: vault_dir = ""
+                is_win = (os.name == 'nt' or sys.platform == 'win32')
+                possible_vault_dirs = [
+                    os.environ.get("VAULT_ROOT"),
+                    os.environ.get("WINDOWS_BIN_DIR") if is_win else os.environ.get("TERMUX_BIN_DIR"),
+                    "E:/Vault" if is_win else None,
+                    "/storage/8283-6832/webdav/Vault" if not is_win else None,
+                    "/sdcard/Vault" if not is_win else None,
+                    "/sdcard/webdav/Vault" if not is_win else None,
+                ]
+                vault_dir = next((d for d in possible_vault_dirs if d and os.path.exists(d)), "")
                 # Tìm file bin tương ứng (ưu tiên trong Vault trước, sau đó fallback về db_dir)
                 bin_patterns = [
                     os.path.join(vault_dir, f"{source_name}_covers_{bin_id:04d}.bin"),
@@ -1344,6 +1374,17 @@ def get_media():
                             bin_data = bf.read(length)
                             if len(bin_data) == length:
                                 return Response(bin_data, mimetype='image/jpeg', headers={'Cache-Control': 'public, max-age=31536000'})
+
+                # Fallback qua Tailscale WebDAV Range request từ FPT Box
+                candidate_remotes = [
+                    f"{source_name}_covers_{bin_id:04d}.bin",
+                    f"{source_name}_posters_{bin_id:04d}.bin",
+                    f"nextdjav_covers_{bin_id:04d}.bin",
+                ]
+                for bname in candidate_remotes:
+                    remote_data = fetch_vault_bin_range(bname, offset, length)
+                    if remote_data:
+                        return Response(remote_data, mimetype='image/jpeg', headers={'Cache-Control': 'public, max-age=31536000', 'X-Storage-Tier': 'FPTBox-Vault-WebDAV'})
         except Exception as e:
             custom_log("API", f"⚠️ Lỗi đọc cover từ Segment Bin cho {vid_id}: {e}")
 
