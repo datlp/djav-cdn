@@ -1,4 +1,7 @@
 
+import os
+import sys
+
 # Remote Storage Fallback over Tailscale
 FPTBOX_VAULT_URL = os.environ.get("FPTBOX_VAULT_URL", "http://fptbox.time-istrian.ts.net:8081/webdav/Vault")
 WEBDAV_USER = os.environ.get("WEBDAV_USER", "admin")
