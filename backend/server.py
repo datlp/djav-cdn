@@ -1351,7 +1351,6 @@ def get_media():
                 possible_vault_dirs = [
                     os.environ.get("VAULT_ROOT"),
                     os.environ.get("WINDOWS_BIN_DIR") if is_win else os.environ.get("TERMUX_BIN_DIR"),
-                    "E:/Vault" if is_win else None,
                     "/storage/8283-6832/webdav/Vault" if not is_win else None,
                     "/sdcard/Vault" if not is_win else None,
                     "/sdcard/webdav/Vault" if not is_win else None,
