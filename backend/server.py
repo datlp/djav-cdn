@@ -68,37 +68,54 @@ def custom_log(category, message):
 builtins.custom_log = custom_log
 
 try:
-    from curl_cffi import requests as curl_requests
     from bs4 import BeautifulSoup
     from flask import Flask, request, jsonify, Response, make_response, send_from_directory
-    import psutil
-    custom_log("System", "✔️ Kiểm tra đủ package cơ bản...")
 except ImportError as e:
     print(f"Lỗi: Không tìm thấy thư viện bắt buộc. Chi tiết: {e}")
-    print("Vui lòng cài đặt các thư viện cần thiết bằng lệnh sau:")
-    print("pip install curl_cffi beautifulsoup4 flask")
-    custom_log("System", f"❌ Không tìm thấy thư viện bắt buộc. Chi tiết: {e}")
-    custom_log("System", "⚠️ Vui lòng cài đặt bằng lệnh: pip install curl_cffi beautifulsoup4 flask psutil")
     sys.exit(1)
-#  
-# Monkey patch curl_cffi.requests Session to enforce secure DNS (1.1.1.1 / 8.8.8.8)
-from curl_cffi import curl
-original_Session = curl_requests.Session
 
-class PatchedSession(original_Session):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if hasattr(self, 'curl') and self.curl:
-            try:
-                # Dùng DNS over HTTPS (DoH) qua Cloudflare 1.1.1.1 (hoặc Google 8.8.8.8) thay vì DNS hệ thống
-                self.curl.setopt(curl.CurlOpt.DOH_URL, b'https://cloudflare-dns.com/dns-query')
-            except Exception:
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+try:
+    from curl_cffi import requests as curl_requests
+    from curl_cffi import curl
+    original_Session = curl_requests.Session
+
+    class PatchedSession(original_Session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if hasattr(self, 'curl') and self.curl:
                 try:
-                    self.curl.setopt(curl.CurlOpt.DOH_URL, b'https://dns.google/dns-query')
+                    self.curl.setopt(curl.CurlOpt.DOH_URL, b'https://cloudflare-dns.com/dns-query')
                 except Exception:
-                    pass
+                    try:
+                        self.curl.setopt(curl.CurlOpt.DOH_URL, b'https://dns.google/dns-query')
+                    except Exception:
+                        pass
 
-curl_requests.Session = PatchedSession
+    curl_requests.Session = PatchedSession
+    custom_log("System", "✔️ Kiểm tra đủ package cơ bản (curl_cffi active)...")
+except ImportError:
+    import types
+    import requests as _std_requests
+    class _FallbackSession(_std_requests.Session):
+        def __init__(self, *args, **kwargs):
+            kwargs.pop("impersonate", None)
+            super().__init__(*args, **kwargs)
+        def request(self, method, url, *args, **kwargs):
+            kwargs.pop("impersonate", None)
+            return super().request(method, url, *args, **kwargs)
+    _std_requests.Session = _FallbackSession
+    curl_requests = _std_requests
+    # Inject dummy curl_cffi into sys.modules so source-*.py imports succeed on armv8l
+    _dummy_cffi = types.ModuleType("curl_cffi")
+    _dummy_cffi.requests = _std_requests
+    sys.modules["curl_cffi"] = _dummy_cffi
+    sys.modules["curl_cffi.requests"] = _std_requests
+    custom_log("System", "⚠️ curl_cffi không khả dụng (armv8l), tự động fallback sang standard requests...")
 
 #  
 try:
