@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Tự động nhận diện Backend Server Host & Port
     const backendHost = window.__BACKEND_URL__ || window.location.origin;
-    const backendPort = window.location.port || window.__BACKEND_PORT__ || 3000;
+    const backendPort = window.location.port || window.__BACKEND_PORT__ || 5011;
 
     let explorer = null;
 

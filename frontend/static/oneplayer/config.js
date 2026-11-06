@@ -1,4 +1,4 @@
-window.__BACKEND_PORT__ = window.location.port || 3000;
+window.__BACKEND_PORT__ = window.location.port || 5011;
 window.__BACKEND_URL__ = window.location.origin;
 
 // Quản lý và bảo vệ Session/Cookies không bị mất khi bất kỳ bên nào (Browser/Server) khởi động lại
